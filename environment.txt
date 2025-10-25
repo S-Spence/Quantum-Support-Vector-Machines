@@ -1,0 +1,9 @@
+qiskit>=1.2
+qiskit-machine-learning>=0.7
+qiskit-algorithms>=0.3
+numpy
+matplotlib
+scikit-learn>
+tqdm
+jupyterlab>
+ipykernel
