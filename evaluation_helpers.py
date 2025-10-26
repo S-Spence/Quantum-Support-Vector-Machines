@@ -1,22 +1,19 @@
-# evaluation_helpers.py
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Callable, Optional, Tuple, Sequence, List
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from typing import Callable, Optional, Tuple, List
+import matplotlib as mpl
+from matplotlib.colors import ListedColormap
 
 def decision_boundary_plot(
     predict_fn: Callable[[np.ndarray], np.ndarray],
-    X: np.ndarray,                  # raw 2D data (for limits + scatter)
-    y: np.ndarray,                  # labels
+    x: np.ndarray,
+    y: np.ndarray,
     save_path: str,
     title: str = "Decision boundary",
-    *,
-    # Choose ONE of these two ways to set mesh resolution:
-    n: Optional[int] = None,        # fixed mesh per axis (e.g., 150)
-    budget: Optional[int] = None,   # cap ~ n^2 * sv_count (e.g., 500_000)
-    sv_count: Optional[int] = None, # required if using budget (e.g., len(model.support_))
-    # Aesthetics / limits
+    n: Optional[int] = None, # mesh size
+    budget: Optional[int] = None, # cap ~ n^2 * sv_count
+    sv_count: Optional[int] = None, # number of support vectors
     pad: float = 0.15,
     min_n: int = 35,
     max_n: int = 300,
@@ -25,141 +22,91 @@ def decision_boundary_plot(
     ylim: Optional[Tuple[float, float]] = None,
 ) -> "matplotlib.figure.Figure":
     """
-    Generic decision-boundary plotter for BOTH classical and quantum models.
-    - You supply `predict_fn(grid)` that returns labels for a (M x 2) grid.
-    - If `n` is None and (budget, sv_count) are provided, it chooses n so that n^2*sv_count <= budget.
-      (Use sv_count = number of support vectors for SVMs / QSVMs.)
-    - Saves to `save_path` and returns the Matplotlib Figure (does not display).
-    """
-    assert X.shape[1] == 2, "This helper assumes 2-D inputs."
+    Plot decision boundary for 2-D data using a provided prediction function. The budget can be used to limit
+    the number of kernel evaluations to speed up runtimes for the quantum svms. 
 
-    # Mesh size
+    Params:
+        predict_fn: function that takes (M x 2) array and returns (M,) array of class predictions
+        x: (N x 2) array of 2-D inputs
+        y: (N,) array of class labels
+        save_path: file path to save the resulting plot (PNG)
+        title: title for the plot
+        n: number of points per axis in the mesh grid; if None, computed from budget and sv_count
+        budget: approximate max number of kernel evaluations (n^2 * sv_count); used if n is None
+        sv_count: number of support vectors; used if n is None
+        pad: padding added to data limits for the plot
+        min_n: minimum n if computed from budget
+        max_n: maximum n if computed from budget
+        scatter_alpha: alpha value for scatter plot points
+        xlim: optional x-axis limits (min, max); if None, computed from data
+        ylim: optional y-axis limits (min, max); if None, computed from data
+    """
+    assert x.shape[1] == 2, "Input data x must be 2-D for decision boundary plot."
+
+    # mesh size
     if n is None:
         if budget is None or sv_count is None:
             raise ValueError("Provide either a fixed n, or both budget and sv_count.")
         n = int(math.floor(math.sqrt(budget / max(1, sv_count))))
         n = max(min_n, min(max_n, n))
 
-    # Limits
+    # limits
     if xlim is None or ylim is None:
-        xlim = (X[:, 0].min() - pad, X[:, 0].max() + pad)
-        ylim = (X[:, 1].min() - pad, X[:, 1].max() + pad)
+        xlim = (x[:, 0].min() - pad, x[:, 0].max() + pad)
+        ylim = (x[:, 1].min() - pad, x[:, 1].max() + pad)
 
-    # Grid
+    # grid
     xx, yy = np.meshgrid(
         np.linspace(xlim[0], xlim[1], n),
         np.linspace(ylim[0], ylim[1], n),
     )
     grid = np.c_[xx.ravel(), yy.ravel()]
 
-    # Predict (caller can batch inside predict_fn if needed)
-    Z = predict_fn(grid).reshape(xx.shape)
+    z = predict_fn(grid).reshape(xx.shape)
 
-    # Plot (no display)
+    # lighten background colors
+    bg_cmap = ListedColormap([
+        lighten("tab:blue",   0.6),
+        lighten("tab:orange", 0.6),
+    ])
+
+    # plot without display
     fig, ax = plt.subplots(figsize=(6, 5))
-    levels = np.arange(Z.min() - 0.5, Z.max() + 1.5)
-    ax.contourf(xx, yy, Z, levels=levels, alpha=0.25)
+    levels = np.arange(z.min() - 0.5, z.max() + 1.5)
+    ax.contourf(xx, yy, z, levels=levels, alpha=0.25, cmap=bg_cmap)
     for cls, color in [(0, "tab:blue"), (1, "tab:orange")]:
         m = (y == cls)
-        ax.scatter(X[m, 0], X[m, 1], s=18, edgecolor="k", linewidth=0.3,
+        ax.scatter(x[m, 0], x[m, 1], s=18, edgecolor="k", linewidth=0.3,
                    c=color, alpha=scatter_alpha, label=f"class {cls}")
     ax.set_xlim(xlim); ax.set_ylim(ylim)
 
-    subtitle = f"(n={n})" if budget is None else f"(n={n}, SV={sv_count}, ~evals={n*n*sv_count:,} ≤ {budget:,})"
-    ax.set_title(f"{title} {subtitle}", fontsize=10)
+    ax.set_title(f"{title}", fontsize=10)
     ax.set_xlabel("$x_1$"); ax.set_ylabel("$x_2$")
     ax.legend(loc="upper right", fontsize=8)
     fig.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     return fig
 
-def plot_confusion_matrices_row(
-    y_true: Sequence[int],
-    y_preds: List[Sequence[int]],
-    titles: List[str],
-    save_path: str,
-    *,
-    labels: Optional[Sequence] = None,        # class order; defaults to sorted unique(y_true)
-    normalize: Optional[str] = None,          # {None, 'true', 'pred', 'all'}
-    cmap: str = "Blues",
-    include_colorbar: bool = False,
-    figsize: tuple = (16, 3),
-    values_format: Optional[str] = None,      # auto: '.2f' if normalized else 'd'
-) -> "matplotlib.figure.Figure":
-    """
-    Plot multiple confusion matrices in one horizontal row, save, and return the Figure.
-
-    Args:
-        y_true: Ground-truth labels for the shared test set.
-        y_preds: List of prediction arrays, one per model.
-        titles: List of panel titles (same length as y_preds).
-        save_path: Output PNG path for the composite.
-        labels: Class label order for the axes (optional).
-        normalize: Normalization mode for confusion_matrix (None/'true'/'pred'/'all').
-        cmap: Matplotlib colormap name.
-        include_colorbar: If True, show a colorbar on the last panel.
-        figsize: Figure size (width, height) in inches.
-        values_format: Format string for cell values. Auto-chosen if None.
-
-    Returns:
-        matplotlib.figure.Figure
-    """
-    if len(y_preds) != len(titles):
-        raise ValueError("y_preds and titles must have the same length.")
-
-    y_true = np.asarray(y_true)
-    if labels is None:
-        # Stable class order derived from y_true
-        labels = np.unique(y_true)
-
-    n = len(y_preds)
-    fig, axes = plt.subplots(1, n, figsize=figsize)
-    if n == 1:
-        axes = [axes]
-
-    # choose values format
-    if values_format is None:
-        values_format = ".2f" if normalize in {"true", "pred", "all"} else "d"
-
-    for i, (ax, yhat, title) in enumerate(zip(axes, y_preds, titles)):
-        yhat = np.asarray(yhat)
-        cm = confusion_matrix(y_true, yhat, labels=labels, normalize=normalize)
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
-        # only add colorbar to the last axis if requested
-        disp.plot(ax=ax, cmap=cmap, colorbar=(include_colorbar and i == n - 1), values_format=values_format)
-        ax.set_title(title)
-        # make the row compact
-        if i > 0:
-            ax.set_ylabel("")  # avoid repeating ylabel
-        ax.tick_params(axis="x", rotation=45)
-
-    fig.tight_layout()
-    fig.savefig(save_path, dpi=150, bbox_inches="tight")
-    return fig
-
-import math
-import numpy as np
-import matplotlib.pyplot as plt
-from typing import List, Optional
+def lighten(color, factor=0.4):
+    r,g,b,a = mpl.colors.to_rgba(color)
+    return (1 - (1-r)*factor, 1 - (1-g)*factor, 1 - (1-b)*factor, 1.0)
 
 def compose_boundary_grid_from_files(
     image_paths: List[str],
     save_path: str,
     titles: Optional[List[str]] = None,
     cols: int = 2,
-    dpi: int = 150,
-    figsize_per_panel: float = 6.0,   # ~ width (inches) per column
+    figsize_per_panel: float = 6.0,
 ) -> "matplotlib.figure.Figure":
     """
-    Create a square-ish grid from already-saved boundary plot images.
+    Create a square grid from saved boundary plot images.
 
-    Args:
-        image_paths: list of file paths to PNGs (created earlier).
-        save_path: output PNG file for the composite.
-        titles: optional titles per panel; if None, use empty strings.
-        cols: number of columns in the grid (2 for 2x2).
-        dpi: DPI for the composite figure.
-        figsize_per_panel: width in inches per panel (tunes overall size).
+    Params:
+        image_paths: list of file paths to boundary plot images
+        save_path: output file path for the composite image (PNG)
+        titles: optional titles per panel
+        cols: number of columns in the grid
+        figsize_per_panel: width in inches per panel (tunes overall size)
 
     Returns:
         Composite matplotlib Figure (not displayed).
@@ -169,22 +116,21 @@ def compose_boundary_grid_from_files(
     n = len(image_paths)
     rows = math.ceil(n / cols)
 
-    # Read all images
+    # read all images
     imgs = [plt.imread(p) for p in image_paths]
     if titles is None:
         titles = [""] * n
     if len(titles) != n:
         raise ValueError("Length of 'titles' must match number of images.")
 
-    # Estimate composite size from first image aspect
+    # estimate composite size from first image aspect
     h0, w0 = imgs[0].shape[:2]
-    panel_aspect = w0 / max(1, h0)  # width / height
+    panel_aspect = w0 / max(1, h0)
     fig_w = cols * figsize_per_panel
     fig_h = rows * (figsize_per_panel / max(1e-9, panel_aspect))
 
-    fig, axes = plt.subplots(rows, cols, figsize=(fig_w, fig_h), dpi=dpi)
+    fig, axes = plt.subplots(rows, cols, figsize=(fig_w, fig_h), dpi=150)
     axes = np.array(axes).ravel() if isinstance(axes, np.ndarray) else np.array([axes])
-
     for i, ax in enumerate(axes):
         if i < n:
             ax.imshow(imgs[i])
@@ -194,5 +140,5 @@ def compose_boundary_grid_from_files(
             ax.axis("off")
 
     fig.tight_layout()
-    fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
     return fig

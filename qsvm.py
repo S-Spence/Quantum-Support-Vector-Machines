@@ -3,15 +3,12 @@ from sklearn.svm import SVC
 from sklearn.preprocessing import MinMaxScaler
 from typing import Callable, Optional
 
-from sympy import ZZ
-
 from qiskit.circuit import QuantumCircuit
 from qiskit.primitives import StatevectorSampler
 from qiskit.quantum_info import Statevector
 from qiskit_algorithms.state_fidelities import ComputeUncompute
 from qiskit_machine_learning.kernels import FidelityQuantumKernel
 from sklearn.metrics.pairwise import rbf_kernel
-
 
 class FidelityKernel:
     """
@@ -46,7 +43,7 @@ class ProjectedKernel:
     @staticmethod
     def _pauli_z_expectations(probs: np.ndarray, n_qubits: int):
         """
-        Compute single- and pairwise Pauli-Z expectations from a probability vector.
+        Compute single and pairwise Pauli-Z expectations from a probability vector.
         """
         idx = np.arange(2**n_qubits)
         # single-qubit <Z_i>
@@ -93,10 +90,10 @@ class QuantumSVM:
     A Quantum SVM classifier using a fidelity-based quantum kernel and SVC.
 
     Params:
-      - feature_map: (QuantumCircuit), ex: ZZFeatureMap.
-      - C: Regularization parameter for SVC.
-      - scale_range: Tuple for MinMaxScaler feature scaling.
-      - seed: Random seed for SVC.
+      - feature_map: (QuantumCircuit), ex: ZZFeatureMap
+      - C: Regularization parameter for SVC
+      - scale_range: Tuple for MinMaxScaler feature scaling
+      - seed: Random seed for SVC
     """
 
     def __init__(self, kernel: Callable, C: float = 1.0, scale_range=(0.0, 1.0), seed: int | None = 42):
