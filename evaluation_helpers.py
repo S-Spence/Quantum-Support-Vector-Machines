@@ -41,7 +41,7 @@ def decision_boundary_plot(
         xlim: optional x-axis limits (min, max); if None, computed from data
         ylim: optional y-axis limits (min, max); if None, computed from data
     """
-    assert x.shape[1] == 2, "Input data x must be 2-D for decision boundary plot."
+    assert x.shape[1] == 2, "Input data must be 2-D for decision boundary plot."
 
     # mesh size
     if n is None:
@@ -106,7 +106,7 @@ def compose_boundary_grid_from_files(
         save_path: output file path for the composite image (PNG)
         titles: optional titles per panel
         cols: number of columns in the grid
-        figsize_per_panel: width in inches per panel (tunes overall size)
+        figsize_per_panel: width in inches per panel
 
     Returns:
         Composite matplotlib Figure (not displayed).
