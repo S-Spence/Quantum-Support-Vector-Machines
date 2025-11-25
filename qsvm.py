@@ -131,7 +131,7 @@ class QuantumSVM:
         out = np.empty(len(x_test), dtype=int)
         for start in range(0, len(x_test), batch_size):
             stop = min(start + batch_size, len(x_test))
-            k = self.kernel.test(x_test[start:stop], self._x_train)  # (b x N)
+            k = self.kernel.test(x_test[start:stop], self._x_train)
             out[start:stop] = self._clf.predict(k)
         return out
 
